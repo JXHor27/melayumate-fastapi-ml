@@ -1,3 +1,6 @@
+from contextlib import asynccontextmanager
+
+import asyncio
 import malaya_speech
 from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -18,26 +21,9 @@ logging.config.dictConfig(LOGGING_CONFIG)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("speech_service")
 
-# --- Initialize FastAPI app ---
-app = FastAPI(
-    title="Malaya Speech Service",
-    description="A service for Text-to-Speech and Speech-to-Text using Malaya-Speech.",
-)
+# Define a dictionary to store application state
+app_state = {}
 
-
-# --- Health Check Endpoint ---
-@app.get("/")
-def read_root():
-    return {"status": "Malaya Speech Service is running"}
-
-
-# --- Global Dictionary to Hold Models ---
-tts_models = {}
-vocoder_models = {}
-stt_models = {}
-
-
-@app.on_event("startup")
 async def load_model():
     """
     Load STT and TTS models on startup
@@ -61,6 +47,37 @@ async def load_model():
     vocoder_models['male'] = malaya_speech.vocoder.melgan(model='osman')
     logger.info("Vocoder models loaded successfully.")
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # --- Code to run on application startup ---
+    ml_models = asyncio.create_task(load_model())
+    app_state["ml_models"] = ml_models
+    yield
+    # --- Code to run on application shutdown ---
+    app_state.clear()
+
+# --- Initialize FastAPI app ---
+app = FastAPI(
+    title="Malaya Speech Service",
+    description="A service for Text-to-Speech and Speech-to-Text using Malaya-Speech.",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+
+# --- Health Check Endpoint ---
+@app.get("/")
+def read_root():
+    return {"status": "Malaya Speech Service is running"}
+
+
+# --- Global Dictionary to Hold Models ---
+tts_models = {}
+vocoder_models = {}
+stt_models = {}
+
+
+
 
 # --- Request Interceptor Middleware Setup ---
 @app.middleware("http")
@@ -78,6 +95,21 @@ async def logging_middleware(request: Request, call_next):
         return response
     finally:
         trace_id_var.reset(token)
+
+
+def load_all_models():
+    if not stt_models:
+        device = "cuda:0" if torch.cuda.is_available() else "cpu"
+        stt_models['processor'] = AutoProcessor.from_pretrained("mesolitica/malaysian-whisper-base")
+        stt_models['model'] = AutoModelForSpeechSeq2Seq.from_pretrained("mesolitica/malaysian-whisper-base").to(device)
+
+    if not tts_models:
+        tts_models['female'] = malaya_speech.tts.fastspeech2(model='yasmin')
+        tts_models['male'] = malaya_speech.tts.fastspeech2(model='osman')
+
+    if not vocoder_models:
+        vocoder_models['female'] = malaya_speech.vocoder.melgan(model='yasmin')
+        vocoder_models['male'] = malaya_speech.vocoder.melgan(model='osman')
 
 
 # --- Text-to-Speech Endpoint ---
