@@ -1,7 +1,6 @@
 from contextlib import asynccontextmanager
 
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
 import malaya_speech
 from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -55,15 +54,27 @@ def load_model():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """
+      Handles startup and shutdown events. Loads ML models on startup.
+      """
+    logger.info("Application startup: Loading ML models...")
+
     loop = asyncio.get_event_loop()
-    loop.run_in_executor(None, load_model)  # runs immediately without blocking
+
+    # Run the synchronous, CPU-bound model loading function in a separate thread
+    await loop.run_in_executor(None, load_model)
+
+    logger.info("ML models loaded successfully. Application is ready.")
+
+    # This 'yield' is the point where the application starts accepting requests.
+    # It will only be reached AFTER the models are loaded.
     yield
-    # # --- Code to run on application startup ---
-    # ml_models = asyncio.create_task(load_model())
-    # app_state["ml_models"] = ml_models
-    # yield
-    # # --- Code to run on application shutdown ---
-    # app_state.clear()
+
+    # --- Code to run on application shutdown (optional) ---
+    logger.info("Application shutdown: Clearing models...")
+    stt_models.clear()
+    tts_models.clear()
+    vocoder_models.clear()
 
 # --- Initialize FastAPI app ---
 app = FastAPI(
@@ -95,22 +106,6 @@ async def logging_middleware(request: Request, call_next):
         return response
     finally:
         trace_id_var.reset(token)
-
-
-def load_all_models():
-    if not stt_models:
-        device = "cuda:0" if torch.cuda.is_available() else "cpu"
-        stt_models['processor'] = AutoProcessor.from_pretrained("mesolitica/malaysian-whisper-base")
-        stt_models['model'] = AutoModelForSpeechSeq2Seq.from_pretrained("mesolitica/malaysian-whisper-base").to(device)
-
-    if not tts_models:
-        tts_models['female'] = malaya_speech.tts.fastspeech2(model='yasmin')
-        tts_models['male'] = malaya_speech.tts.fastspeech2(model='osman')
-
-    if not vocoder_models:
-        vocoder_models['female'] = malaya_speech.vocoder.melgan(model='yasmin')
-        vocoder_models['male'] = malaya_speech.vocoder.melgan(model='osman')
-
 
 # --- Text-to-Speech Endpoint ---
 @app.post("/tts", response_class=StreamingResponse)
