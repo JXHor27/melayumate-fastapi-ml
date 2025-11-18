@@ -1,0 +1,10 @@
+{
+  "AWSEBDockerrunVersion": "1",
+  "Image": {
+    "Name": "gusion27/my-fastapi-app:latest",
+    "Update": "true"
+  },
+  "Ports": [
+    { "ContainerPort": "8000" }
+  ]
+}
