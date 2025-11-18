@@ -24,10 +24,19 @@ app = FastAPI(
     description="A service for Text-to-Speech and Speech-to-Text using Malaya-Speech.",
 )
 
+
+# --- Health Check Endpoint ---
+@app.get("/")
+def read_root():
+    return {"status": "Malaya Speech Service is running"}
+
+
 # --- Global Dictionary to Hold Models ---
 tts_models = {}
 vocoder_models = {}
 stt_models = {}
+
+
 @app.on_event("startup")
 async def load_model():
     """
@@ -70,6 +79,7 @@ async def logging_middleware(request: Request, call_next):
     finally:
         trace_id_var.reset(token)
 
+
 # --- Text-to-Speech Endpoint ---
 @app.post("/tts", response_class=StreamingResponse)
 async def text_to_speech(request: TTSRequest):
@@ -96,6 +106,7 @@ async def text_to_speech(request: TTSRequest):
     except Exception as e:
         logger.error(f"An error occurred during TTS processing: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to process text-to-speech request.")
+
 
 # --- Speech-to-Text Endpoint ---
 @app.post("/stt", response_model=STTResponse)
@@ -151,14 +162,6 @@ async def speech_to_text(file: UploadFile = File(...)):
         print(f"Error during STT with Whisper: {e}")
         # Be careful not to expose too much detail in production errors
         raise HTTPException(status_code=500, detail=f"An error occurred during transcription: {e}")
-
-
-# --- Health Check Endpoint ---
-@app.get("/")
-def read_root():
-    return {"status": "Malaya Speech Service is running"}
-
-
 
 # --- Speech-to-Text Endpoint ---
 # @app.post("/stt", response_model=STTResponse)
