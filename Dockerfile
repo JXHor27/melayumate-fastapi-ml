@@ -1,3 +1,5 @@
+RUN apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
 # Use an official Python runtime as a parent image
 FROM python:3.11-slim
 RUN pip install --upgrade pip
