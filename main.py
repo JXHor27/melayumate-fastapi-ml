@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 import malaya_speech
 from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -24,7 +25,12 @@ logger = logging.getLogger("speech_service")
 # Define a dictionary to store application state
 app_state = {}
 
-async def load_model():
+# --- Global Dictionary to Hold Models ---
+tts_models = {}
+vocoder_models = {}
+stt_models = {}
+
+def load_model():
     """
     Load STT and TTS models on startup
     """
@@ -49,12 +55,15 @@ async def load_model():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # --- Code to run on application startup ---
-    ml_models = asyncio.create_task(load_model())
-    app_state["ml_models"] = ml_models
+    loop = asyncio.get_event_loop()
+    loop.run_in_executor(None, load_model)  # runs immediately without blocking
     yield
-    # --- Code to run on application shutdown ---
-    app_state.clear()
+    # # --- Code to run on application startup ---
+    # ml_models = asyncio.create_task(load_model())
+    # app_state["ml_models"] = ml_models
+    # yield
+    # # --- Code to run on application shutdown ---
+    # app_state.clear()
 
 # --- Initialize FastAPI app ---
 app = FastAPI(
@@ -69,15 +78,6 @@ app = FastAPI(
 @app.get("/")
 def read_root():
     return {"status": "Malaya Speech Service is running"}
-
-
-# --- Global Dictionary to Hold Models ---
-tts_models = {}
-vocoder_models = {}
-stt_models = {}
-
-
-
 
 # --- Request Interceptor Middleware Setup ---
 @app.middleware("http")
